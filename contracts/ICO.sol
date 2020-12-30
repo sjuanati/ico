@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.6.12;
 
+import {ERC20Token} from "./ERC20Token.sol";
+
 /* ICO mechanism:
  * - ICO crowdsale contract: collect the investments and coordinate the transfers of ERC20 tokens
  * - ERC20 token contract
@@ -10,113 +12,6 @@ pragma solidity ^0.6.12;
  * Each investor has a cost (KYC..), so a min investment amount is required to cover this cost
  * Also recommended to have max investment amount to diversify (avoid whale with overpower, regulation rules)
  */
-
-interface ERC20Interface {
-    function transfer(address to, uint256 tokens)
-        external
-        returns (bool success);
-
-    function transferFrom(
-        address from,
-        address to,
-        uint256 tokens
-    ) external returns (bool success);
-
-    function balanceOf(address tokenOwner)
-        external
-        view
-        returns (uint256 balance);
-
-    function approve(address spender, uint256 tokens)
-        external
-        returns (bool success);
-
-    function allowance(address tokenOwner, address spender)
-        external
-        view
-        returns (uint256 remaining);
-
-    //function totalSupply() external view returns (uint);
-
-    event Transfer(address indexed from, address indexed to, uint256 tokens);
-    event Approval(
-        address indexed tokenOwner,
-        address indexed spender,
-        uint256 tokens
-    );
-}
-
-contract ERC20Token is ERC20Interface {
-    string public name;
-    string public symbol;
-    uint8 public decimals;
-    uint256 public totalSupply;
-    mapping(address => uint256) public balances;
-    mapping(address => mapping(address => uint256)) public allowed;
-
-    constructor(
-        string memory _name,
-        string memory _symbol,
-        uint8 _decimals,
-        uint256 _totalSupply
-    ) public {
-        name = _name;
-        symbol = _symbol;
-        decimals = _decimals;
-        totalSupply = _totalSupply;
-        balances[msg.sender] = _totalSupply;
-    }
-
-    function transfer(address to, uint256 value)
-        public
-        override
-        returns (bool)
-    {
-        require(balances[msg.sender] >= value);
-        balances[msg.sender] -= value;
-        balances[to] += value;
-        emit Transfer(msg.sender, to, value);
-        return true;
-    }
-
-    function transferFrom(
-        address from,
-        address to,
-        uint256 value
-    ) public override returns (bool) {
-        uint256 allowance = allowed[from][msg.sender];
-        require(balances[msg.sender] >= value && allowance >= value);
-        allowed[from][msg.sender] -= value;
-        balances[msg.sender] -= value;
-        balances[to] += value;
-        emit Transfer(msg.sender, to, value);
-        return true;
-    }
-
-    function approve(address spender, uint256 value)
-        public
-        override
-        returns (bool)
-    {
-        require(spender != msg.sender);
-        allowed[msg.sender][spender] = value;
-        emit Approval(msg.sender, spender, value);
-        return true;
-    }
-
-    function allowance(address owner, address spender)
-        public
-        view
-        override
-        returns (uint256)
-    {
-        return allowed[owner][spender];
-    }
-
-    function balanceOf(address owner) public view override returns (uint256) {
-        return balances[owner];
-    }
-}
 
 contract ICO {
     struct Sale {
@@ -128,7 +23,7 @@ contract ICO {
     address public token;
     address public admin;
     uint256 public end; // end of the ICO
-    uint256 public price; // price of the ICO (tokens x ETH)
+    uint256 public price; // token price (tokens x ETH)
     uint256 public available; // some tokens can be reserved for founders, pre-sale, etc
     uint256 public minPurchase;
     uint256 public maxPurchase;
@@ -185,6 +80,7 @@ contract ICO {
         uint256 quantity = price * msg.value; // price (token x ether) * value (ether)
         require(quantity <= available, "not enough token left for sale");
         sales.push(Sale(msg.sender, quantity));
+        available -= quantity;
     }
 
     function release() external onlyAdmin() icoEnded() tokensNotReleased() {
@@ -193,6 +89,7 @@ contract ICO {
             Sale storage sale = sales[i];
             tokenInstance.transfer(sale.investor, sale.quantity);
         }
+        released = true;
     }
 
     function withdraw(address payable to, uint256 amount)
